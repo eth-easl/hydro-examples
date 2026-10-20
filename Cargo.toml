@@ -5,7 +5,7 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-hydro_lang = { git = "https://github.com/hydro-project/hydro.git", branch = "main" }
+hydro_lang = { path = "../hydro_SP/hydro_lang"}
 stageleft = "*"
 axum = "0.8"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
@@ -18,9 +18,10 @@ tokio-stream = "0.1"
 stageleft_tool = "*"
 
 [dev-dependencies]
-hydro_deploy = { git = "https://github.com/hydro-project/hydro.git", branch = "main" }
-hydro_lang = { git = "https://github.com/hydro-project/hydro.git", branch = "main", features = [
+hydro_deploy = { path = "../hydro_SP/hydro_deploy/core" }
+hydro_lang = { path = "../hydro_SP/hydro_lang", features = [
     "deploy",
+    "knative_deploy",
     # Current Hydro deploy code needs tempfile, enabled by its sim feature.
     "sim",
 ] }
