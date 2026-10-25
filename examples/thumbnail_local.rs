@@ -55,7 +55,7 @@ async fn run() {
     let mut args = std::env::args().skip(1);
     let address: std::net::SocketAddr = args
         .next()
-        .unwrap_or_else(|| "127.0.0.1:8080".into())
+        .unwrap_or_else(|| "0.0.0.0:8080".into())
         .parse()
         .expect("address must be IP:port");
     assert!(address.port() > 0, "port must be nonzero");
@@ -85,6 +85,8 @@ async fn run() {
     // }
 
     _nodes.get_process(&service).expose_port(8080);
+
+    deployment.generate_deploy_files(&_nodes).await.unwrap();
 
     let manifest: HydroManifest = deployment.export(&_nodes);
 
