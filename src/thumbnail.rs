@@ -14,6 +14,12 @@ use axum::{
 use serde::Deserialize;
 
 pub struct Service;
+pub struct Archive;
+
+enum Delivery {
+    Client(crate::http::Message<Response, Response>),
+    Archive(Response),
+}
 
 pub const MAX_DIMENSION: u32 = 2048;
 pub const MAX_BODY: usize = 8 * 1024 * 1024;
@@ -93,7 +99,11 @@ async fn handle_thumbnail(
     }
 }
 
-pub fn thumbnail_service<'a>(service: &Process<'a, Service>, address: std::net::SocketAddr) {
+pub fn thumbnail_service<'a>(
+    service: &Process<'a, Service>,
+    archive: &Process<'a, Archive>,
+    address: std::net::SocketAddr,
+) {
     let (requests, responses) = crate::http::serve(
         service,
         address,
@@ -106,9 +116,73 @@ pub fn thumbnail_service<'a>(service: &Process<'a, Service>, address: std::net::
                 .with_state(bridge)
         }),
     );
+    let (client_items, archive_items) = requests
+        .flat_map_ordered(q!(|request| {
+            let reply = crate::http::Message::map(request, self::render);
+            let archive_copy = reply.payload.clone();
+
+            [
+                self::Delivery::Client(reply),
+                self::Delivery::Archive(archive_copy),
+            ]
+        }))
+        .partition(q!(|item| { matches!(item, self::Delivery::Client(_)) }));
+
+    // Reply to the original HTTP client.
+    responses.complete(
+        client_items
+            .filter_map(q!(|item| match item {
+                self::Delivery::Client(reply) => Some(reply),
+                _ => None,
+            }))
+            .weaken_ordering::<NoOrder>(),
+    );
+
+    // Send to the archive Hydro process.
+    archive_items
+        .filter_map(q!(|item| match item {
+            self::Delivery::Archive(result) => Some(result),
+            _ => None,
+        }))
+        .send(archive, TCP.fail_stop().bincode())
+        .for_each(q!(|_result| {
+            // Intentionally ignore the received result.
+        }));
+}
+
+async fn handle_archive(
+    State(bridge): State<Bridge<Vec<u8>, ()>>,
+    body: Bytes,
+) -> axum::response::Response {
+    match bridge.call(body.to_vec()).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(error) => error.into_response(),
+    }
+}
+
+pub fn archive_service<'a>(
+    archive: &Process<'a, Archive>,
+    address: std::net::SocketAddr,
+) {
+    let (requests, responses) = crate::http::serve(
+        archive,
+        address,
+        Config::default(),
+        q!(|bridge| {
+            Router::new()
+                .route("/health", axum::routing::get(|| async { "ok" }))
+                .route("/archive", axum::routing::post(self::handle_archive))
+                .layer(DefaultBodyLimit::max(self::MAX_BODY))
+                .with_state(bridge)
+        }),
+    );
+
+    // Receive each HTTP request and discard its payload.
     responses.complete(
         requests
-            .map(q!(|request| request.map(self::render)))
+            .map(q!(|request| {
+                crate::http::Message::map(request, |_bytes| ())
+            }))
             .weaken_ordering::<NoOrder>(),
     );
 }

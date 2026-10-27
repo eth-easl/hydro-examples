@@ -1,6 +1,6 @@
 use hydro_deploy::Deployment;
 use hydro_lang::deploy::{HydroManifest, KnativeDeploy};
-use hydro_examples::thumbnail::{Service, thumbnail_service};
+use hydro_examples::thumbnail::{thumbnail_service, Archive, Service, archive_service};
 use hydro_lang::prelude::*;
 use hydro_lang::runtime_support::dfir_rs::serde_json;
 
@@ -67,8 +67,10 @@ async fn run() {
     // let mut deployment = Deployment::new();
     let mut flow = FlowBuilder::new();
     let service = flow.process::<Service>();
+    let archive = flow.process::<Archive>();
     // let external = flow.external::<()>();
-    thumbnail_service(&service, address);
+    thumbnail_service(&service, &archive, address);
+    archive_service(&archive, address);
     // let _nodes = flow
     //     .with_process(&service, deployment.add_knative_process())
     //     .with_external(&external, deployment.add_external("client".into()))
@@ -76,6 +78,7 @@ async fn run() {
 
     let _nodes = flow
         .with_process(&service, deployment.add_knative_process())
+        .with_process(&archive, deployment.add_knative_process())
         .deploy(&mut deployment);
 
     // Stop after code generation if requested.
@@ -85,6 +88,7 @@ async fn run() {
     // }
 
     _nodes.get_process(&service).expose_port(8080);
+    _nodes.get_process(&archive).expose_port(8080);
 
     deployment.generate_deploy_files(&_nodes).await.unwrap();
 
