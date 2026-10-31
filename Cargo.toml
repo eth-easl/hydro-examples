@@ -5,7 +5,7 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-hydro_lang = { path = "../hydro_SP/hydro_lang"}
+hydro_lang = { path = "../hydro_SP/hydro_lang", features = ["knative_runtime"]}
 stageleft = "*"
 axum = "0.8"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }

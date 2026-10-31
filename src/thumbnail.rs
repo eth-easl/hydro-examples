@@ -43,6 +43,7 @@ fn validate_dimensions(width: u32, height: u32) -> Result<(), String> {
 /// Fit within the requested box, preserving aspect ratio and avoiding upscaling.
 /// Accept PNG/JPEG and always produce PNG. No filesystem or external storage.
 pub fn render(request: Request) -> Response {
+    eprintln!("Thumbnail service received request");
     validate_dimensions(request.width, request.height)?;
     if request.image.len() > MAX_BODY {
         return Err("image exceeds 8 MiB".into());
@@ -112,6 +113,7 @@ pub fn thumbnail_service<'a>(
             Router::new()
                 .route("/health", axum::routing::get(|| async { "ok" }))
                 .route("/thumbnail", axum::routing::post(self::handle_thumbnail))
+                .merge(hydro_lang::deploy::deploy_runtime_containerized_knative::knative_router())
                 .layer(DefaultBodyLimit::max(self::MAX_BODY))
                 .with_state(bridge)
         }),
@@ -145,8 +147,12 @@ pub fn thumbnail_service<'a>(
             _ => None,
         }))
         .send(archive, TCP.fail_stop().bincode())
-        .for_each(q!(|_result| {
+        .for_each(q!(|result| {
             // Intentionally ignore the received result.
+            match result {
+                Ok(bytes) => eprintln!("Archive received {} bytes", bytes.len()),
+                Err(error) => eprintln!("Archive error: {:?}", error),
+            }
         }));
 }
 
@@ -160,10 +166,7 @@ async fn handle_archive(
     }
 }
 
-pub fn archive_service<'a>(
-    archive: &Process<'a, Archive>,
-    address: std::net::SocketAddr,
-) {
+pub fn archive_service<'a>(archive: &Process<'a, Archive>, address: std::net::SocketAddr) {
     let (requests, responses) = crate::http::serve(
         archive,
         address,
@@ -172,6 +175,7 @@ pub fn archive_service<'a>(
             Router::new()
                 .route("/health", axum::routing::get(|| async { "ok" }))
                 .route("/archive", axum::routing::post(self::handle_archive))
+                .merge(hydro_lang::deploy::deploy_runtime_containerized_knative::knative_router())
                 .layer(DefaultBodyLimit::max(self::MAX_BODY))
                 .with_state(bridge)
         }),

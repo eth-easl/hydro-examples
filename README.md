@@ -109,6 +109,16 @@ host machine to the Knative cluster:
 kubectl -n kourier-system port-forward svc/kourier 8080:80
 ```
 
+Loading image from local registry to Knative:
+
+```bash
+kind load docker-image dev.local/hy-service-loc1v1:v1 --name knative
+kind load docker-image dev.local/hy-archive-loc2v1:v1 --name knative
+kubectl apply -f target/hydro_trybuild/hydro-examples/deploy/hy-archive-loc2v1/hy-archive-loc2v1.yaml
+kubectl apply -f target/hydro_trybuild/hydro-examples/deploy/hy-service-loc1v1/hy-service-loc1v1.yaml
+```
+
+
 Note that in order for this routing to work, you must bind Axum to `0.0.0.0:<port>`, where `<port>` matches the exposed
 port of the corresponding hydro service. Next, find the Knative URL for your service (possibly requires replacing the service name in the following command):
 
