@@ -1,6 +1,6 @@
 use hydro_deploy::Deployment;
 use hydro_lang::deploy::{HydroManifest, KnativeDeploy};
-use hydro_examples::thumbnail::{thumbnail_service, Archive, Service, archive_service};
+use hydro_examples::thumbnail::{thumbnail_service, Archive, Service};
 use hydro_lang::prelude::*;
 use hydro_lang::runtime_support::dfir_rs::serde_json;
 
@@ -70,14 +70,13 @@ async fn run() {
     let archive = flow.process::<Archive>();
     // let external = flow.external::<()>();
     thumbnail_service(&service, &archive, address);
-    archive_service(&archive, address);
     // let _nodes = flow
     //     .with_process(&service, deployment.add_knative_process())
     //     .with_external(&external, deployment.add_external("client".into()))
     //     .deploy(&mut deployment);
 
     let _nodes = flow
-        .with_process(&service, deployment.add_knative_process())
+        .with_process(&service, deployment.add_knative_process().with_application_http())
         .with_process(&archive, deployment.add_knative_process())
         .deploy(&mut deployment);
 

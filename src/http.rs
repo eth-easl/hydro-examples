@@ -54,6 +54,39 @@ where
     }))
 }
 
+pub fn serve_knative<'a, I: Send + 'static, O: Send + 'static, P: 'a, F>(
+    process: &Process<'a, P>,
+    config: Config,
+    router: impl QuotedWithContext<'a, F, Process<'a, P>>,
+) -> Endpoint<'a, I, O, P>
+where
+    F: FnOnce(Bridge<I, O>) -> Router + 'static,
+{
+    assert!(config.capacity > 0, "HTTP bridge capacity must be positive");
+
+    let capacity = config.capacity;
+    let timeout = config.timeout;
+
+    process.sidecar_bidi(q!(move || {
+        let mut config = self::Config::default();
+        config.capacity = capacity;
+        config.timeout = timeout;
+
+        // Create the bridge, but NOT an HTTP listener.
+        let (bridge, channels) = self::connect(config);
+
+        // Let application code build the Axum router.
+        let app_router = router(bridge);
+
+        // Give the router to the Knative runtime.
+        hydro_lang::deploy::deploy_runtime_containerized_knative
+            ::register_application_router(app_router);
+
+        // Return the usual Hydro request/response channels.
+        channels
+    }))
+}
+
 /// A local request and its reply channel. Move it through the dataflow with `map`.
 /// This envelope is intentionally neither cloneable nor serializable.
 #[derive(Debug)]

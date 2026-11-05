@@ -105,15 +105,13 @@ pub fn thumbnail_service<'a>(
     archive: &Process<'a, Archive>,
     address: std::net::SocketAddr,
 ) {
-    let (requests, responses) = crate::http::serve(
+    let (requests, responses) = crate::http::serve_knative(
         service,
-        address,
         Config::default(),
         q!(|bridge| {
             Router::new()
                 .route("/health", axum::routing::get(|| async { "ok" }))
                 .route("/thumbnail", axum::routing::post(self::handle_thumbnail))
-                .merge(hydro_lang::deploy::deploy_runtime_containerized_knative::knative_router())
                 .layer(DefaultBodyLimit::max(self::MAX_BODY))
                 .with_state(bridge)
         }),
@@ -164,31 +162,6 @@ async fn handle_archive(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(error) => error.into_response(),
     }
-}
-
-pub fn archive_service<'a>(archive: &Process<'a, Archive>, address: std::net::SocketAddr) {
-    let (requests, responses) = crate::http::serve(
-        archive,
-        address,
-        Config::default(),
-        q!(|bridge| {
-            Router::new()
-                .route("/health", axum::routing::get(|| async { "ok" }))
-                .route("/archive", axum::routing::post(self::handle_archive))
-                .merge(hydro_lang::deploy::deploy_runtime_containerized_knative::knative_router())
-                .layer(DefaultBodyLimit::max(self::MAX_BODY))
-                .with_state(bridge)
-        }),
-    );
-
-    // Receive each HTTP request and discard its payload.
-    responses.complete(
-        requests
-            .map(q!(|request| {
-                crate::http::Message::map(request, |_bytes| ())
-            }))
-            .weaken_ordering::<NoOrder>(),
-    );
 }
 
 #[cfg(test)]

@@ -118,6 +118,21 @@ kubectl apply -f target/hydro_trybuild/hydro-examples/deploy/hy-archive-loc2v1/h
 kubectl apply -f target/hydro_trybuild/hydro-examples/deploy/hy-service-loc1v1/hy-service-loc1v1.yaml
 ```
 
+Inspect the logs for a service (accumulated over all pods):
+
+```bash
+kubectl logs \
+  -l serving.knative.dev/service=hy-service-loc1v1 \
+  -c user-container \
+  --all-pods=true \
+  --prefix=true
+  
+kubectl logs \
+  -l serving.knative.dev/service=hy-archive-loc2v1 \
+  -c user-container \
+  --all-pods=true \
+  --prefix=true
+```
 
 Note that in order for this routing to work, you must bind Axum to `0.0.0.0:<port>`, where `<port>` matches the exposed
 port of the corresponding hydro service. Next, find the Knative URL for your service (possibly requires replacing the service name in the following command):
