@@ -1,4 +1,3 @@
-use hydro_deploy::Deployment;
 use hydro_lang::deploy::{HydroManifest, KnativeDeploy};
 use hydro_examples::thumbnail::{thumbnail_service, Archive, Service};
 use hydro_lang::prelude::*;
@@ -69,7 +68,7 @@ async fn run() {
     let service = flow.process::<Service>();
     let archive = flow.process::<Archive>();
     // let external = flow.external::<()>();
-    thumbnail_service(&service, &archive, address);
+    thumbnail_service(&service, &archive);
     // let _nodes = flow
     //     .with_process(&service, deployment.add_knative_process())
     //     .with_external(&external, deployment.add_external("client".into()))

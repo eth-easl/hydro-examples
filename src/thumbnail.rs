@@ -1,5 +1,5 @@
 //! One stateless HTTP service per platform-managed instance.
-use hydro_lang::live_collections::stream::NoOrder;
+use hydro_lang::live_collections::stream::{NoOrder, TotalOrder};
 use hydro_lang::prelude::*;
 use std::io::Cursor;
 
@@ -12,6 +12,7 @@ use axum::{
     response::IntoResponse,
 };
 use serde::Deserialize;
+use hydro_lang::networking::HTTP;
 
 pub struct Service;
 pub struct Archive;
@@ -103,7 +104,6 @@ async fn handle_thumbnail(
 pub fn thumbnail_service<'a>(
     service: &Process<'a, Service>,
     archive: &Process<'a, Archive>,
-    address: std::net::SocketAddr,
 ) {
     let (requests, responses) = crate::http::serve_knative(
         service,
@@ -144,7 +144,11 @@ pub fn thumbnail_service<'a>(
             self::Delivery::Archive(result) => Some(result),
             _ => None,
         }))
-        .send(archive, TCP.fail_stop().bincode())
+        .send(archive, HTTP.lossy(nondet!(/** Knative HTTP may lose messages. The application tolerates this nondeterminism */)).bincode())
+        .assume_ordering::<TotalOrder>(
+            nondet!(/** Process incoming messages in their
+                         * arbitrary arrival order. */)
+        )
         .for_each(q!(|result| {
             // Intentionally ignore the received result.
             match result {
@@ -152,16 +156,6 @@ pub fn thumbnail_service<'a>(
                 Err(error) => eprintln!("Archive error: {:?}", error),
             }
         }));
-}
-
-async fn handle_archive(
-    State(bridge): State<Bridge<Vec<u8>, ()>>,
-    body: Bytes,
-) -> axum::response::Response {
-    match bridge.call(body.to_vec()).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => error.into_response(),
-    }
 }
 
 #[cfg(test)]
