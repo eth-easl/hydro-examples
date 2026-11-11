@@ -114,8 +114,10 @@ Loading image from local registry to Knative:
 ```bash
 kind load docker-image dev.local/hy-service-loc1v1:v1 --name knative
 kind load docker-image dev.local/hy-archive-loc2v1:v1 --name knative
-kubectl apply -f target/hydro_trybuild/hydro-examples/deploy/hy-archive-loc2v1/hy-archive-loc2v1.yaml
+kind load docker-image dev.local/hy-log-loc3v1:v1 --name knative
 kubectl apply -f target/hydro_trybuild/hydro-examples/deploy/hy-service-loc1v1/hy-service-loc1v1.yaml
+kubectl apply -f target/hydro_trybuild/hydro-examples/deploy/hy-archive-loc2v1/hy-archive-loc2v1.yaml
+kubectl apply -f target/hydro_trybuild/hydro-examples/deploy/hy-log-loc3v1/hy-log-loc3v1.yaml
 ```
 
 Inspect the logs for a service (accumulated over all pods):
@@ -129,6 +131,12 @@ kubectl logs \
   
 kubectl logs \
   -l serving.knative.dev/service=hy-archive-loc2v1 \
+  -c user-container \
+  --all-pods=true \
+  --prefix=true
+  
+kubectl logs \
+  -l serving.knative.dev/service=hy-log-loc3v1 \
   -c user-container \
   --all-pods=true \
   --prefix=true

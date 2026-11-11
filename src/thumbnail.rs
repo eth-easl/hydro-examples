@@ -11,15 +11,17 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
-use serde::Deserialize;
 use hydro_lang::networking::HTTP;
+use serde::Deserialize;
 
 pub struct Service;
 pub struct Archive;
+pub struct Log;
 
 enum Delivery {
     Client(crate::http::Message<Response, Response>),
     Archive(Response),
+    Log(Result<usize, String>),
 }
 
 pub const MAX_DIMENSION: u32 = 2048;
@@ -104,6 +106,7 @@ async fn handle_thumbnail(
 pub fn thumbnail_service<'a>(
     service: &Process<'a, Service>,
     archive: &Process<'a, Archive>,
+    log: &Process<'a, Log>,
 ) {
     let (requests, responses) = crate::http::serve_knative(
         service,
@@ -116,17 +119,22 @@ pub fn thumbnail_service<'a>(
                 .with_state(bridge)
         }),
     );
-    let (client_items, archive_items) = requests
+    let (client_items, remaining_items) = requests
         .flat_map_ordered(q!(|request| {
             let reply = crate::http::Message::map(request, self::render);
             let archive_copy = reply.payload.clone();
+            let length = archive_copy.as_ref().unwrap().len();
 
             [
                 self::Delivery::Client(reply),
                 self::Delivery::Archive(archive_copy),
+                self::Delivery::Log(Ok(length)),
             ]
         }))
         .partition(q!(|item| { matches!(item, self::Delivery::Client(_)) }));
+
+    let (archive_items, log_items) =
+        remaining_items.partition(q!(|item| { matches!(item, self::Delivery::Archive(_)) }));
 
     // Reply to the original HTTP client.
     responses.complete(
@@ -139,23 +147,53 @@ pub fn thumbnail_service<'a>(
     );
 
     // Send to the archive Hydro process.
-    archive_items
+    let received_by_archive = archive_items
         .filter_map(q!(|item| match item {
             self::Delivery::Archive(result) => Some(result),
             _ => None,
         }))
-        .send(archive, HTTP.lossy(nondet!(/** Knative HTTP may lose messages. The application tolerates this nondeterminism */)).bincode())
+        .send(archive, HTTP.lossy(nondet!(/** Knative HTTP may lose messages. Don't care for this test application*/)).bincode())
         .assume_ordering::<TotalOrder>(
             nondet!(/** Process incoming messages in their
                          * arbitrary arrival order. */)
-        )
+        );
+
+    received_by_archive.clone()
         .for_each(q!(|result| {
-            // Intentionally ignore the received result.
             match result {
-                Ok(bytes) => eprintln!("Archive received {} bytes", bytes.len()),
-                Err(error) => eprintln!("Archive error: {:?}", error),
+                Ok(bytes) => eprintln!("[Archive] received {} bytes", bytes.len()),
+                Err(error) => eprintln!("[Archive] error: {:?}", error),
             }
         }));
+
+    log_items
+        .filter_map(q!(|item| match item {
+            self::Delivery::Log(length) => Some(length),
+            _ => None,
+        }))
+        .send(log, HTTP.lossy(nondet!(/** Knative HTTP may lose messages. Don't care for this test application*/)).bincode())
+        .assume_ordering::<TotalOrder>(
+            nondet!(/** Process incoming messages in their
+                                    * arbitrary arrival order. */)
+        )
+        .for_each(q!(|result| match result {
+            Ok(bytes) => eprintln!("[Log] received number {} from thumbnail-service", bytes),
+            Err(error) => eprintln!("[Log] error receiving from thumbnail-service: {:?}", error),
+        }));
+
+    received_by_archive.map(q!(|response| {
+            Response::map(response, |payload| payload.len())
+        }))
+        .send(log, HTTP.lossy(nondet!(/** Knative HTTP may lose messages. Don't care for this test application*/)).bincode())
+        .assume_ordering::<TotalOrder>(
+            nondet!(/** Process incoming messages in their
+                                               * arbitrary arrival order. */)
+        )
+        .for_each(q!(|result| match result {
+            Ok(bytes) => eprintln!("[Log] received number {} from archive-service", bytes),
+            Err(error) => eprintln!("[Log] error receiving from archive-service: {:?}", error),
+        }));
+
 }
 
 #[cfg(test)]
